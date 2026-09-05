@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 
-<title>Pro Trading Terminal - Live Technical Summary</title>
+<title>Pro Trading Terminal - Investing Technical Summary</title>
 
 <style>
 *{
@@ -108,42 +108,34 @@ th{
   font-weight:700;
 }
 
-.na{
-  color:#888;
+.sb{
+  color:#008000;
+  font-weight:900;
+}
+
+.buy{
+  color:#008000;
   font-weight:700;
 }
 
-.sb,
-.buy{
-  color:#008000;
+.ss{
+  color:#d50000;
+  font-weight:900;
 }
 
-.ss,
 .sell{
   color:#d50000;
+  font-weight:700;
 }
 
 .neutral{
   color:#777;
+  font-weight:700;
 }
 
-.strong{
-  font-weight:900;
-}
-
-.error{
-  background:#f8d7da !important;
-  color:#721c24 !important;
-}
-
-.live{
-  background:#d4edda !important;
-  color:#155724 !important;
-}
-
-.loading{
-  background:#fff3cd !important;
-  color:#856404 !important;
+.na{
+  color:#888;
+  font-weight:700;
 }
 
 .updated{
@@ -151,6 +143,12 @@ th{
   color:#666;
   padding:7px 10px;
   border-bottom:1px solid #ddd;
+}
+
+.source{
+  font-size:10px;
+  color:#888;
+  padding:6px 10px;
 }
 
 @media(max-width:600px){
@@ -172,7 +170,6 @@ th{
   td{
     padding:6px;
   }
-
 }
 </style>
 </head>
@@ -187,13 +184,13 @@ th{
   <span>Forex &amp; Crypto Live Feed</span>
 </div>
 
-<div id="status" class="loading">
-  Connecting to market feed...
+<div id="status">
+  Connecting to Investing.com...
 </div>
 
 <div class="tableWrap">
 
-<table id="tbl">
+<table>
 
 <thead>
 <tr>
@@ -210,7 +207,7 @@ th{
 
 <tr>
   <td colspan="6">
-    Loading Investing.com technical data...
+    Loading...
   </td>
 </tr>
 
@@ -224,16 +221,20 @@ th{
   Waiting for first update...
 </div>
 
+<div class="source">
+  Technical data source: Investing.com
+</div>
+
 
 <script>
 
 const REFRESH_MS = 30000;
 
-let loading = false;
+let busy = false;
 
 
 /* =========================================================
-   SAFE HTML
+   ESCAPE HTML
    ========================================================= */
 
 function esc(value){
@@ -248,34 +249,38 @@ function esc(value){
 
 
 /* =========================================================
-   SIGNAL FORMAT
+   SIGNAL CLASS
    ========================================================= */
 
 function signalClass(value){
 
-  const t =
+  const v =
     String(value || "")
       .trim()
       .toLowerCase();
 
-  if(t === "strong buy")
-    return "sb strong";
+  if(v === "strong buy")
+    return "sb";
 
-  if(t === "buy")
+  if(v === "buy")
     return "buy";
 
-  if(t === "neutral")
+  if(v === "neutral")
     return "neutral";
 
-  if(t === "sell")
+  if(v === "sell")
     return "sell";
 
-  if(t === "strong sell")
-    return "ss strong";
+  if(v === "strong sell")
+    return "ss";
 
   return "na";
 }
 
+
+/* =========================================================
+   SIGNAL RENDER
+   ========================================================= */
 
 function col(value){
 
@@ -290,19 +295,16 @@ function col(value){
 
   }
 
-  const safe =
-    esc(value);
-
   return `
     <span class="${signalClass(value)}">
-      ${safe}
+      ${esc(value)}
     </span>
   `;
 }
 
 
 /* =========================================================
-   PRICE FORMAT
+   PRICE CLASS
    ========================================================= */
 
 function priceClass(color){
@@ -326,12 +328,12 @@ function render(data){
   const tbody =
     document.getElementById("tbody");
 
-  if(!Array.isArray(data) || data.length === 0){
+  if(!Array.isArray(data) || !data.length){
 
     tbody.innerHTML = `
       <tr>
         <td colspan="6">
-          No market data available
+          No Investing.com data available
         </td>
       </tr>
     `;
@@ -343,33 +345,23 @@ function render(data){
   let html = "";
 
 
-  data.forEach(r => {
-
-    const name =
-      esc(r.name || "Unknown");
-
-    const price =
-      esc(r.price || "N/A");
-
-    const pClass =
-      priceClass(r.color);
-
+  data.forEach(asset => {
 
     const ma =
-      Array.isArray(r.ma)
-        ? r.ma
+      Array.isArray(asset.ma)
+        ? asset.ma
         : ["N/A","N/A","N/A","N/A"];
 
 
     const ti =
-      Array.isArray(r.ti)
-        ? r.ti
+      Array.isArray(asset.ti)
+        ? asset.ti
         : ["N/A","N/A","N/A","N/A"];
 
 
     const summary =
-      Array.isArray(r.s)
-        ? r.s
+      Array.isArray(asset.s)
+        ? asset.s
         : ["N/A","N/A","N/A","N/A"];
 
 
@@ -380,15 +372,14 @@ function render(data){
         <td rowspan="3">
 
           <div class="name">
-            ${name}
+            ${esc(asset.name)}
           </div>
 
-          <div class="price ${pClass}">
-            ${price}
+          <div class="price ${priceClass(asset.color)}">
+            ${esc(asset.price)}
           </div>
 
         </td>
-
 
         <td class="type">
           Moving Averages:
@@ -422,21 +413,10 @@ function render(data){
           <b>Overall Summary:</b>
         </td>
 
-        <td>
-          <b>${col(summary[0])}</b>
-        </td>
-
-        <td>
-          <b>${col(summary[1])}</b>
-        </td>
-
-        <td>
-          <b>${col(summary[2])}</b>
-        </td>
-
-        <td>
-          <b>${col(summary[3])}</b>
-        </td>
+        <td><b>${col(summary[0])}</b></td>
+        <td><b>${col(summary[1])}</b></td>
+        <td><b>${col(summary[2])}</b></td>
+        <td><b>${col(summary[3])}</b></td>
 
       </tr>
 
@@ -445,32 +425,35 @@ function render(data){
   });
 
 
-  tbody.innerHTML =
-    html;
+  tbody.innerHTML = html;
 }
 
 
 /* =========================================================
-   LOAD DATA
+   LOAD
    ========================================================= */
 
 async function load(){
 
-  if(loading)
+  if(busy)
     return;
 
-  loading = true;
-
+  busy = true;
 
   const status =
     document.getElementById("status");
 
+
   try{
 
-    status.className = "loading";
+    status.style.background =
+      "#fff3cd";
+
+    status.style.color =
+      "#856404";
 
     status.textContent =
-      "Connecting to Investing.com market feed...";
+      "Connecting to Investing.com...";
 
 
     const response =
@@ -478,11 +461,7 @@ async function load(){
         "/api/terminal?t=" +
         Date.now(),
         {
-          method:"GET",
-          cache:"no-store",
-          headers:{
-            "Accept":"application/json"
-          }
+          cache:"no-store"
         }
       );
 
@@ -505,7 +484,7 @@ async function load(){
 
       throw new Error(
         json.error ||
-        "Market feed unavailable"
+        "Feed unavailable"
       );
 
     }
@@ -514,10 +493,14 @@ async function load(){
     render(json.data);
 
 
-    status.className = "live";
+    status.style.background =
+      "#d4edda";
+
+    status.style.color =
+      "#155724";
 
     status.textContent =
-      "✅ LIVE MARKET DATA ACTIVE | Investing.com";
+      "✅ INVESTING.COM TECHNICAL DATA ACTIVE";
 
 
     document.getElementById("updated")
@@ -531,7 +514,11 @@ async function load(){
     console.error(error);
 
 
-    status.className = "error";
+    status.style.background =
+      "#f8d7da";
+
+    status.style.color =
+      "#721c24";
 
     status.textContent =
       "⚠️ Feed Error: " +
@@ -539,10 +526,9 @@ async function load(){
 
   }finally{
 
-    loading = false;
+    busy = false;
 
   }
-
 }
 
 
