@@ -1,32 +1,62 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Investing Terminal - 100% Original</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pro Trading Terminal - Live Technical Summary</title>
 <style>
-body{background:#0b0e11;color:#fff;font-family:Arial;padding:10px}
-table{width:100%;border-collapse:collapse;background:#151a21}
-th,td{border:1px solid #222;padding:8px;text-align:center;font-size:12px}
-th{background:#1e252f}
-.green{color:#26a69a;font-weight:bold}
-.red{color:#ef5350;font-weight:bold}
-.blue{color:#888}
+body{margin:0;background:#fff;font-family:Arial,sans-serif}
+.h{background:#1a1a1a;color:#fff;padding:12px;font-size:20px;font-weight:900}
+.h b{color:orange}
+.tabs{display:flex;gap:15px;padding:10px 12px;background:#f5f5f5;font-weight:700;border-bottom:1px solid #ddd}
+table{width:100%;border-collapse:collapse;font-size:13px;display:block;overflow-x:auto}
+th,td{border:1px solid #ddd;padding:7px;text-align:center;white-space:nowrap}
+.name{color:#0b46da;font-weight:900;font-size:14px}
+.price{font-weight:900}
+.red{color:#d50000}.green{color:#008000}.blue{color:#0b46da}
+#status{padding:8px;text-align:center;font-size:13px;font-weight:700}
 </style>
 </head>
 <body>
-<h2>🔴 LIVE Investing.com Original</h2>
-<table id="tbl"><thead><tr><th>Pair</th><th>Price</th><th>MA 5m</th><th>MA 15m</th><th>TI 5m</th><th>Summary 5m</th></tr></thead><tbody></tbody></table>
+<div class="h"><b>P</b>ro Trading - Technical Terminal</div>
+<div class="tabs"><span style="border-bottom:2px solid #000">Forex & Crypto Live Feed</span></div>
+<div id="status" style="background:#fff3cd;">Connecting to market feed...</div>
+<table id="tbl"></table>
 <script>
 async function load(){
-  const r = await fetch('/api/terminal'); const j = await r.json();
-  if(!j.success){document.body.innerHTML=j.error; return;}
-  let html='';
-  j.data.forEach(d=>{
-    html+=`<tr><td>${d.name}</td><td class="${d.color}">${d.price}</td><td class="${d.ma[0].toLowerCase().includes('buy')?'green':d.ma[0].toLowerCase().includes('sell')?'red':'blue'}">${d.ma[0]}</td><td>${d.ma[1]}</td><td>${d.ti[0]}</td><td>${d.s[0]}</td></tr>`;
-  });
-  document.querySelector('#tbl tbody').innerHTML=html;
+  const status=document.getElementById('status');
+  try{
+    const r=await fetch("/api/terminal?t="+Date.now());
+    const j=await r.json();
+    if(j.success){
+      status.style.background="#d4edda";
+      status.innerHTML="✅ LIVE MARKET DATA ACTIVE | Updated: "+new Date().toLocaleTimeString();
+      render(j.data);
+    } else {
+      throw new Error(j.error || "Failed to fetch");
+    }
+  }catch(e){ 
+    status.style.background="#f8d7da";
+    status.style.color="#721c24";
+    status.textContent="⚠️ Feed Error: " + e.message;
+  }
 }
-load(); setInterval(load, 60000);
+function col(t){
+  if(t.includes("Strong Buy")) return `<span style="color:#008000;font-weight:900">${t}</span>`;
+  if(t.includes("Strong Sell")) return `<span style="color:#d50000;font-weight:900">${t}</span>`;
+  if(t.includes("Buy")) return `<span style="color:#008000;font-weight:700">${t}</span>`;
+  if(t.includes("Sell")) return `<span style="color:#d50000;font-weight:700">${t}</span>`;
+  return `<span style="color:gray">${t}</span>`;
+}
+function render(data){
+  let h=`<tr><th>Asset Name</th><th>Indicator Type</th><th>1 Min</th><th>5 Min</th><th>15 Min</th><th>30 Min</th></tr>`;
+  data.forEach(r=>{
+    h+=`<tr><td rowspan="3"><div class="name">${r.name}</div><div class="price ${r.color}">${r.price}</div></td><td style="text-align:left">Moving Averages:</td><td>${col(r.ma[0])}</td><td>${col(r.ma[1])}</td><td>${col(r.ma[2])}</td><td>${col(r.ma[3])}</td></tr><tr><td style="text-align:left">Technical Indicators:</td><td>${col(r.ti[0])}</td><td>${col(r.ti[1])}</td><td>${col(r.ti[2])}</td><td>${col(r.ti[3])}</td></tr><tr><td style="text-align:left"><b>Overall Summary:</b></td><td><b>${col(r.s[0])}</b></td><td><b>${col(r.s[1])}</b></td><td><b>${col(r.s[2])}</b></td><td><b>${col(r.s[3])}</b></td></tr>`;
+  });
+  document.getElementById('tbl').innerHTML=h;
+}
+load(); 
+setInterval(load, 30000);
 </script>
 </body>
 </html>
