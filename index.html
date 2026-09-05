@@ -1,62 +1,563 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+
 <title>Pro Trading Terminal - Live Technical Summary</title>
+
 <style>
-body{margin:0;background:#fff;font-family:Arial,sans-serif}
-.h{background:#1a1a1a;color:#fff;padding:12px;font-size:20px;font-weight:900}
-.h b{color:orange}
-.tabs{display:flex;gap:15px;padding:10px 12px;background:#f5f5f5;font-weight:700;border-bottom:1px solid #ddd}
-table{width:100%;border-collapse:collapse;font-size:13px;display:block;overflow-x:auto}
-th,td{border:1px solid #ddd;padding:7px;text-align:center;white-space:nowrap}
-.name{color:#0b46da;font-weight:900;font-size:14px}
-.price{font-weight:900}
-.red{color:#d50000}.green{color:#008000}.blue{color:#0b46da}
-#status{padding:8px;text-align:center;font-size:13px;font-weight:700}
+*{
+  box-sizing:border-box;
+}
+
+body{
+  margin:0;
+  background:#fff;
+  color:#111;
+  font-family:Arial,Helvetica,sans-serif;
+}
+
+.h{
+  background:#1a1a1a;
+  color:#fff;
+  padding:12px;
+  font-size:20px;
+  font-weight:900;
+}
+
+.h b{
+  color:orange;
+}
+
+.tabs{
+  display:flex;
+  gap:15px;
+  padding:10px 12px;
+  background:#f5f5f5;
+  font-weight:700;
+  border-bottom:1px solid #ddd;
+}
+
+.tabs span{
+  border-bottom:2px solid #000;
+  padding-bottom:5px;
+}
+
+#status{
+  padding:8px;
+  text-align:center;
+  font-size:13px;
+  font-weight:700;
+  background:#fff3cd;
+  color:#856404;
+  border-bottom:1px solid #ddd;
+}
+
+.tableWrap{
+  width:100%;
+  overflow-x:auto;
+}
+
+table{
+  width:100%;
+  min-width:760px;
+  border-collapse:collapse;
+  font-size:13px;
+}
+
+th,
+td{
+  border:1px solid #ddd;
+  padding:7px;
+  text-align:center;
+  white-space:nowrap;
+}
+
+th{
+  background:#f3f3f3;
+  font-weight:900;
+}
+
+.name{
+  color:#0b46da;
+  font-weight:900;
+  font-size:14px;
+}
+
+.price{
+  margin-top:3px;
+  font-weight:900;
+  font-size:12px;
+}
+
+.red{
+  color:#d50000;
+}
+
+.green{
+  color:#008000;
+}
+
+.blue{
+  color:#0b46da;
+}
+
+.type{
+  text-align:left;
+  font-weight:700;
+}
+
+.na{
+  color:#888;
+  font-weight:700;
+}
+
+.sb,
+.buy{
+  color:#008000;
+}
+
+.ss,
+.sell{
+  color:#d50000;
+}
+
+.neutral{
+  color:#777;
+}
+
+.strong{
+  font-weight:900;
+}
+
+.error{
+  background:#f8d7da !important;
+  color:#721c24 !important;
+}
+
+.live{
+  background:#d4edda !important;
+  color:#155724 !important;
+}
+
+.loading{
+  background:#fff3cd !important;
+  color:#856404 !important;
+}
+
+.updated{
+  font-size:11px;
+  color:#666;
+  padding:7px 10px;
+  border-bottom:1px solid #ddd;
+}
+
+@media(max-width:600px){
+
+  .h{
+    font-size:17px;
+  }
+
+  .tabs{
+    font-size:12px;
+  }
+
+  table{
+    min-width:720px;
+    font-size:12px;
+  }
+
+  th,
+  td{
+    padding:6px;
+  }
+
+}
 </style>
 </head>
+
 <body>
-<div class="h"><b>P</b>ro Trading - Technical Terminal</div>
-<div class="tabs"><span style="border-bottom:2px solid #000">Forex & Crypto Live Feed</span></div>
-<div id="status" style="background:#fff3cd;">Connecting to market feed...</div>
-<table id="tbl"></table>
+
+<div class="h">
+  <b>P</b>ro Trading - Technical Terminal
+</div>
+
+<div class="tabs">
+  <span>Forex &amp; Crypto Live Feed</span>
+</div>
+
+<div id="status" class="loading">
+  Connecting to market feed...
+</div>
+
+<div class="tableWrap">
+
+<table id="tbl">
+
+<thead>
+<tr>
+  <th>Asset Name</th>
+  <th>Indicator Type</th>
+  <th>1 Min</th>
+  <th>5 Min</th>
+  <th>15 Min</th>
+  <th>30 Min</th>
+</tr>
+</thead>
+
+<tbody id="tbody">
+
+<tr>
+  <td colspan="6">
+    Loading Investing.com technical data...
+  </td>
+</tr>
+
+</tbody>
+
+</table>
+
+</div>
+
+<div id="updated" class="updated">
+  Waiting for first update...
+</div>
+
+
 <script>
-async function load(){
-  const status=document.getElementById('status');
-  try{
-    const r=await fetch("/api/terminal?t="+Date.now());
-    const j=await r.json();
-    if(j.success){
-      status.style.background="#d4edda";
-      status.innerHTML="✅ LIVE MARKET DATA ACTIVE | Updated: "+new Date().toLocaleTimeString();
-      render(j.data);
-    } else {
-      throw new Error(j.error || "Failed to fetch");
-    }
-  }catch(e){ 
-    status.style.background="#f8d7da";
-    status.style.color="#721c24";
-    status.textContent="⚠️ Feed Error: " + e.message;
+
+const REFRESH_MS = 30000;
+
+let loading = false;
+
+
+/* =========================================================
+   SAFE HTML
+   ========================================================= */
+
+function esc(value){
+
+  return String(value ?? "")
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;")
+    .replace(/'/g,"&#039;");
+}
+
+
+/* =========================================================
+   SIGNAL FORMAT
+   ========================================================= */
+
+function signalClass(value){
+
+  const t =
+    String(value || "")
+      .trim()
+      .toLowerCase();
+
+  if(t === "strong buy")
+    return "sb strong";
+
+  if(t === "buy")
+    return "buy";
+
+  if(t === "neutral")
+    return "neutral";
+
+  if(t === "sell")
+    return "sell";
+
+  if(t === "strong sell")
+    return "ss strong";
+
+  return "na";
+}
+
+
+function col(value){
+
+  if(
+    value === undefined ||
+    value === null ||
+    value === "" ||
+    value === "N/A"
+  ){
+
+    return `<span class="na">N/A</span>`;
+
   }
+
+  const safe =
+    esc(value);
+
+  return `
+    <span class="${signalClass(value)}">
+      ${safe}
+    </span>
+  `;
 }
-function col(t){
-  if(t.includes("Strong Buy")) return `<span style="color:#008000;font-weight:900">${t}</span>`;
-  if(t.includes("Strong Sell")) return `<span style="color:#d50000;font-weight:900">${t}</span>`;
-  if(t.includes("Buy")) return `<span style="color:#008000;font-weight:700">${t}</span>`;
-  if(t.includes("Sell")) return `<span style="color:#d50000;font-weight:700">${t}</span>`;
-  return `<span style="color:gray">${t}</span>`;
+
+
+/* =========================================================
+   PRICE FORMAT
+   ========================================================= */
+
+function priceClass(color){
+
+  if(color === "green")
+    return "green";
+
+  if(color === "red")
+    return "red";
+
+  return "blue";
 }
+
+
+/* =========================================================
+   RENDER
+   ========================================================= */
+
 function render(data){
-  let h=`<tr><th>Asset Name</th><th>Indicator Type</th><th>1 Min</th><th>5 Min</th><th>15 Min</th><th>30 Min</th></tr>`;
-  data.forEach(r=>{
-    h+=`<tr><td rowspan="3"><div class="name">${r.name}</div><div class="price ${r.color}">${r.price}</div></td><td style="text-align:left">Moving Averages:</td><td>${col(r.ma[0])}</td><td>${col(r.ma[1])}</td><td>${col(r.ma[2])}</td><td>${col(r.ma[3])}</td></tr><tr><td style="text-align:left">Technical Indicators:</td><td>${col(r.ti[0])}</td><td>${col(r.ti[1])}</td><td>${col(r.ti[2])}</td><td>${col(r.ti[3])}</td></tr><tr><td style="text-align:left"><b>Overall Summary:</b></td><td><b>${col(r.s[0])}</b></td><td><b>${col(r.s[1])}</b></td><td><b>${col(r.s[2])}</b></td><td><b>${col(r.s[3])}</b></td></tr>`;
+
+  const tbody =
+    document.getElementById("tbody");
+
+  if(!Array.isArray(data) || data.length === 0){
+
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="6">
+          No market data available
+        </td>
+      </tr>
+    `;
+
+    return;
+  }
+
+
+  let html = "";
+
+
+  data.forEach(r => {
+
+    const name =
+      esc(r.name || "Unknown");
+
+    const price =
+      esc(r.price || "N/A");
+
+    const pClass =
+      priceClass(r.color);
+
+
+    const ma =
+      Array.isArray(r.ma)
+        ? r.ma
+        : ["N/A","N/A","N/A","N/A"];
+
+
+    const ti =
+      Array.isArray(r.ti)
+        ? r.ti
+        : ["N/A","N/A","N/A","N/A"];
+
+
+    const summary =
+      Array.isArray(r.s)
+        ? r.s
+        : ["N/A","N/A","N/A","N/A"];
+
+
+    html += `
+
+      <tr>
+
+        <td rowspan="3">
+
+          <div class="name">
+            ${name}
+          </div>
+
+          <div class="price ${pClass}">
+            ${price}
+          </div>
+
+        </td>
+
+
+        <td class="type">
+          Moving Averages:
+        </td>
+
+        <td>${col(ma[0])}</td>
+        <td>${col(ma[1])}</td>
+        <td>${col(ma[2])}</td>
+        <td>${col(ma[3])}</td>
+
+      </tr>
+
+
+      <tr>
+
+        <td class="type">
+          Technical Indicators:
+        </td>
+
+        <td>${col(ti[0])}</td>
+        <td>${col(ti[1])}</td>
+        <td>${col(ti[2])}</td>
+        <td>${col(ti[3])}</td>
+
+      </tr>
+
+
+      <tr>
+
+        <td class="type">
+          <b>Overall Summary:</b>
+        </td>
+
+        <td>
+          <b>${col(summary[0])}</b>
+        </td>
+
+        <td>
+          <b>${col(summary[1])}</b>
+        </td>
+
+        <td>
+          <b>${col(summary[2])}</b>
+        </td>
+
+        <td>
+          <b>${col(summary[3])}</b>
+        </td>
+
+      </tr>
+
+    `;
+
   });
-  document.getElementById('tbl').innerHTML=h;
+
+
+  tbody.innerHTML =
+    html;
 }
-load(); 
-setInterval(load, 30000);
+
+
+/* =========================================================
+   LOAD DATA
+   ========================================================= */
+
+async function load(){
+
+  if(loading)
+    return;
+
+  loading = true;
+
+
+  const status =
+    document.getElementById("status");
+
+  try{
+
+    status.className = "loading";
+
+    status.textContent =
+      "Connecting to Investing.com market feed...";
+
+
+    const response =
+      await fetch(
+        "/api/terminal?t=" +
+        Date.now(),
+        {
+          method:"GET",
+          cache:"no-store",
+          headers:{
+            "Accept":"application/json"
+          }
+        }
+      );
+
+
+    if(!response.ok){
+
+      throw new Error(
+        "Server HTTP " +
+        response.status
+      );
+
+    }
+
+
+    const json =
+      await response.json();
+
+
+    if(!json.success){
+
+      throw new Error(
+        json.error ||
+        "Market feed unavailable"
+      );
+
+    }
+
+
+    render(json.data);
+
+
+    status.className = "live";
+
+    status.textContent =
+      "✅ LIVE MARKET DATA ACTIVE | Investing.com";
+
+
+    document.getElementById("updated")
+      .textContent =
+        "Last update: " +
+        new Date().toLocaleTimeString();
+
+
+  }catch(error){
+
+    console.error(error);
+
+
+    status.className = "error";
+
+    status.textContent =
+      "⚠️ Feed Error: " +
+      error.message;
+
+  }finally{
+
+    loading = false;
+
+  }
+
+}
+
+
+/* =========================================================
+   START
+   ========================================================= */
+
+load();
+
+setInterval(
+  load,
+  REFRESH_MS
+);
+
 </script>
+
 </body>
 </html>
