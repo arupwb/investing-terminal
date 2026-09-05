@@ -4,7 +4,14 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-app.use(express.static(process.cwd()));
+app.get('/', (req, res) => {
+  const htmlPath = path.join(process.cwd(), 'index.html');
+  if (fs.existsSync(htmlPath)) {
+    res.sendFile(htmlPath);
+  } else {
+    res.status(404).send("index.html file not found in root directory!");
+  }
+});
 
 app.get('/api/terminal', async (req, res) => {
   try {
@@ -19,13 +26,13 @@ app.get('/api/terminal', async (req, res) => {
       { id: 72, name: "GBP/JPY", yahoo: "GBPJPY=X" }
     ];
 
+    // 100% Original Investing API via Proxy to bypass 403
     const investingUrl = 'https://api.investing.com/api/financialdata/technical/ByPairIDs?pairIDs=1,2,4,5,6,9,18,72&timeFrames=60,300,900,1800';
+    const proxyRes = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(investingUrl)}`);
+    const proxyJson = await proxyRes.json();
+    const investingData = JSON.parse(proxyJson.contents); // Eta 100% Investing er original data
 
-    let apiData;
-    const r1 = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(investingUrl)}`);
-    const j1 = await r1.json();
-    apiData = JSON.parse(j1.contents);
-
+    // Price only from Yahoo
     const prices = {};
     await Promise.all(map.map(async m => {
       try {
@@ -37,7 +44,7 @@ app.get('/api/terminal', async (req, res) => {
     }));
 
     const results = map.map(m => {
-      const it = apiData.find(x => x.pairId == m.id);
+      const it = investingData.find(x => x.pairId == m.id);
       return {
         name: m.name,
         price: prices[m.id].p,
@@ -54,8 +61,6 @@ app.get('/api/terminal', async (req, res) => {
   }
 });
 
-app.get('/', (req, res) => {
-  res.sendFile(path.join(process.cwd(), 'index.html'));
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
-
-app.listen(PORT, () => console.log('Server running on ' + PORT));
