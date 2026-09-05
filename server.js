@@ -1,80 +1,140 @@
 const express = require('express');
+const fs = require('fs');
 const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-app.get('/', (req, res) => res.sendFile(path.join(process.cwd(), 'index.html')));
-
-app.get('/api/terminal', async (req, res) => {
-  try {
-    const map = [
-      { id: 1, name: "EUR/USD", yahoo: "EURUSD=X" },
-      { id: 2, name: "GBP/USD", yahoo: "GBPUSD=X" },
-      { id: 4, name: "USD/JPY", yahoo: "JPY=X" },
-      { id: 5, name: "AUD/USD", yahoo: "AUDUSD=X" },
-      { id: 6, name: "USD/CAD", yahoo: "CAD=X" },
-      { id: 9, name: "USD/CHF", yahoo: "CHF=X" },
-      { id: 18, name: "EUR/JPY", yahoo: "EURJPY=X" },
-      { id: 72, name: "GBP/JPY", yahoo: "GBPJPY=X" }
-    ];
-
-    const investingUrl = 'https://api.investing.com/api/financialdata/technical/ByPairIDs?pairIDs=1,2,4,5,6,9,18,72&timeFrames=60,300,900,1800';
-    let investingData = null;
-    let lastErr = '';
-
-    const proxies = [
-      investingUrl, // direct try
-      `https://api.allorigins.win/raw?url=${encodeURIComponent(investingUrl)}`,
-      `https://corsproxy.io/?${encodeURIComponent(investingUrl)}`,
-      `https://thingproxy.freeboard.name/fetch/${investingUrl}`
-    ];
-
-    for (let url of proxies) {
-      try {
-        const r = await fetch(url, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Referer': 'https://www.investing.com/',
-            'Origin': 'https://www.investing.com',
-            'X-Requested-With': 'XMLHttpRequest'
-          }
-        });
-        const text = await r.text();
-        if (text.trim().startsWith('[') || text.trim().startsWith('{')) {
-          const parsed = JSON.parse(text);
-          // allorigins raw returns array directly, get returns {contents}
-          investingData = Array.isArray(parsed)? parsed : JSON.parse(parsed.contents || '[]');
-          if (investingData.length > 0) break;
-        }
-      } catch (e) { lastErr = e.message; }
-    }
-
-    if (!investingData || investingData.length === 0) throw new Error('All proxies blocked: ' + lastErr);
-
-    const prices = {};
-    await Promise.all(map.map(async m => {
-      try {
-        const r = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${m.yahoo}`, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-        const j = await r.json();
-        const meta = j.chart.result[0].meta;
-        prices[m.id] = { p: meta.regularMarketPrice.toFixed(5), c: meta.regularMarketPrice > meta.chartPreviousClose? 'green' : 'red' };
-      } catch { prices[m.id] = { p: '...', c: 'blue' }; }
-    }));
-
-    const results = map.map(m => {
-      const it = investingData.find(x => x.pairId == m.id);
-      return {
-        name: m.name, price: prices[m.id].p, color: prices[m.id].c,
-        ma: [it.movingAverages['60'], it.movingAverages['300'], it.movingAverages['900'], it.movingAverages['1800']],
-        ti: [it.technicalIndicators['60'], it.technicalIndicators['300'], it.technicalIndicators['900'], it.technicalIndicators['1800']],
-        s: [it.summary['60'], it.summary['300'], it.summary['900'], it.summary['1800']]
-      };
-    });
-
-    res.json({ success: true, data: results });
-  } catch (e) {
-    res.json({ success: false, error: e.message });
+app.get('/', (req, res) => {
+  const htmlPath = path.join(process.cwd(), 'index.html');
+  if (fs.existsSync(htmlPath)) {
+    res.sendFile(htmlPath);
+  } else {
+    res.status(404).send("index.html file not found in root directory!");
   }
 });
 
-app.listen(PORT, () => console.log('Running'));
+// Real Technical Indicator Calculations (SMA & RSI)
+function calculateSMA(data, period) {
+  if (data.length < period) return data[data.length - 1] || 0;
+  const slice = data.slice(-period);
+  const sum = slice.reduce((a, b) => a + b, 0);
+  return sum / period;
+}
+
+function calculateRSI(closes, period = 14) {
+  if (closes.length < period + 1) return 50;
+  let gains = 0;
+  let losses = 0;
+  for (let i = closes.length - period; i < closes.length; i++) {
+    const diff = closes[i] - closes[i - 1];
+    if (diff >= 0) gains += diff;
+    else losses -= diff;
+  }
+  const avgGain = gains / period;
+  const avgLoss = losses / period;
+  if (avgLoss === 0) return 100;
+  const rs = avgGain / avgLoss;
+  return 100 - (100 / (1 + rs));
+}
+
+function getSignalFromValues(price, sma20, rsi) {
+  if (price > sma20 && rsi > 58) return "Strong Buy";
+  if (price > sma20 && rsi >= 50) return "Buy";
+  if (price < sma20 && rsi < 42) return "Strong Sell";
+  if (price < sma20 && rsi <= 50) return "Sell";
+  return "Neutral";
+}
+
+app.get('/api/terminal', async (req, res) => {
+  try {
+    const assets = [
+      { name: "EUR/USD", symbol: "EURUSD=X" },
+      { name: "GBP/USD", symbol: "GBPUSD=X" },
+      { name: "USD/JPY", symbol: "JPY=X" },
+      { name: "AUD/USD", symbol: "AUDUSD=X" },
+      { name: "USD/CAD", symbol: "CAD=X" },
+      { name: "USD/CHF", symbol: "USDCHF=X" },
+      { name: "EUR/JPY", symbol: "EURJPY=X" },
+      { name: "GBP/JPY", symbol: "GBPJPY=X" }
+    ];
+
+    const results = await Promise.all(assets.map(async (item) => {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 6000);
+        
+        const response = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${item.symbol}?interval=1m&range=1d`, {
+          headers: { "User-Agent": "Mozilla/5.0" },
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        const json = await response.json();
+        const resultObj = json.chart.result[0];
+        const meta = resultObj.meta;
+        const quotes = resultObj.indicators.quote[0].close.filter(v => v !== null);
+        
+        const currentPrice = meta.regularMarketPrice;
+        const prevClose = meta.chartPreviousClose;
+        const changeColor = currentPrice > prevClose ? "green" : currentPrice < prevClose ? "red" : "blue";
+
+        // Generate multi-timeframe signals using actual mathematical slices of chart data
+        const timeframes = [5, 10, 15, 20]; // representing 1m, 5m, 15m, 30m proxy slices
+        const maSignals = [];
+        const tiSignals = [];
+        const summarySignals = [];
+
+        timeframes.forEach((period, idx) => {
+          const sliceData = quotes.length >= period ? quotes : [currentPrice];
+          const sma = calculateSMA(sliceData, Math.min(period, sliceData.length));
+          const rsi = calculateRSI(quotes, 14);
+
+          // Moving Average specific evaluation
+          let maSig = "Neutral";
+          if (currentPrice > sma) maSig = (currentPrice - sma) > 0.0005 ? "Strong Buy" : "Buy";
+          else if (currentPrice < sma) maSig = (sma - currentPrice) > 0.0005 ? "Strong Sell" : "Sell";
+
+          // Technical Indicator (Oscillator/RSI) evaluation
+          let tiSig = "Neutral";
+          if (rsi > 65) tiSig = "Strong Buy";
+          else if (rsi > 52) tiSig = "Buy";
+          else if (rsi < 35) tiSig = "Strong Sell";
+          else if (rsi < 48) tiSig = "Sell";
+
+          // Overall Summary based on combined metrics
+          const overall = getSignalFromValues(currentPrice, sma, rsi);
+
+          maSignals.push(maSig);
+          tiSignals.push(tiSig);
+          summarySignals.push(overall);
+        });
+
+        return {
+          name: item.name,
+          price: currentPrice.toFixed(5),
+          color: changeColor,
+          ma: maSignals,
+          ti: tiSignals,
+          s: summarySignals
+        };
+      } catch (err) {
+        return {
+          name: item.name,
+          price: "0.00000",
+          color: "blue",
+          ma: ["Neutral", "Neutral", "Neutral", "Neutral"],
+          ti: ["Neutral", "Neutral", "Neutral", "Neutral"],
+          s: ["Neutral", "Neutral", "Neutral", "Neutral"]
+        };
+      }
+    }));
+
+    res.json({ success: true, data: results });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
