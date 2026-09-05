@@ -5,12 +5,7 @@ const app = express();
 const PORT = process.env.PORT || 10000;
 
 app.get('/', (req, res) => {
-  const htmlPath = path.join(process.cwd(), 'index.html');
-  if (fs.existsSync(htmlPath)) {
-    res.sendFile(htmlPath);
-  } else {
-    res.status(404).send("index.html file not found in root directory!");
-  }
+  res.sendFile(path.join(process.cwd(), 'index.html'));
 });
 
 app.get('/api/terminal', async (req, res) => {
@@ -26,13 +21,26 @@ app.get('/api/terminal', async (req, res) => {
       { id: 72, name: "GBP/JPY", yahoo: "GBPJPY=X" }
     ];
 
-    // 100% Original Investing API via Proxy to bypass 403
     const investingUrl = 'https://api.investing.com/api/financialdata/technical/ByPairIDs?pairIDs=1,2,4,5,6,9,18,72&timeFrames=60,300,900,1800';
-    const proxyRes = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(investingUrl)}`);
-    const proxyJson = await proxyRes.json();
-    const investingData = JSON.parse(proxyJson.contents); // Eta 100% Investing er original data
+    let investingData = null;
 
-    // Price only from Yahoo
+    // Try Proxy 1
+    try {
+      const r1 = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(investingUrl)}`);
+      const j1 = await r1.json();
+      if (j1.contents && j1.contents.trim().startsWith('[')) {
+        investingData = JSON.parse(j1.contents);
+      } else {
+        throw new Error('Proxy 1 returned HTML');
+      }
+    } catch (e) {
+      console.log('Proxy1 failed, trying Proxy2', e.message);
+      // Try Proxy 2
+      const r2 = await fetch(`https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(investingUrl)}`);
+      investingData = await r2.json();
+    }
+
+    // Price fetch
     const prices = {};
     await Promise.all(map.map(async m => {
       try {
@@ -57,10 +65,9 @@ app.get('/api/terminal', async (req, res) => {
 
     res.json({ success: true, data: results });
   } catch (e) {
-    res.status(500).json({ success: false, error: e.message });
+    console.log('API Error', e.message);
+    res.json({ success: false, error: 'Market feed busy, retrying... ' + e.message });
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log('Running on ' + PORT));
