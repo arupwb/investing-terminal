@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Investing.com - Technical Summary</title>
+<title>Investing.com - Technical Summary Terminal</title>
 <style>
 body{margin:0;background:#fff;font-family:Arial,sans-serif}
-.h{background:#1a1a1a;color:#fff;padding:12px;font-size:22px;font-weight:900}
+.h{background:#1a1a1a;color:#fff;padding:12px;font-size:20px;font-weight:900}
 .h b{color:orange}
 .tabs{display:flex;gap:15px;padding:10px 12px;background:#f5f5f5;font-weight:700;border-bottom:1px solid #ddd}
 table{width:100%;border-collapse:collapse;font-size:13px;display:block;overflow-x:auto}
@@ -19,7 +19,7 @@ th,td{border:1px solid #ddd;padding:7px;text-align:center;white-space:nowrap}
 </head>
 <body>
 <div class="h"><b>I</b>nvesting.com - Technical Summary</div>
-<div class="tabs"><span style="border-bottom:2px solid #000">Forex</span></div>
+<div class="tabs"><span style="border-bottom:2px solid #000">Forex & Crypto Live</span></div>
 <div id="status">Loading...</div>
 <table id="tbl"></table>
 <script>
@@ -32,7 +32,7 @@ async function load(){
     const j=await r.json();
     if(j.live){
       status.style.background="#d4edda";
-      status.innerHTML="✅ LIVE - Real Forex Price + Investing.com Summary | "+new Date().toLocaleTimeString();
+      status.innerHTML="✅ LIVE - Real Price + Investing.com Summary | "+new Date().toLocaleTimeString();
       render(j.data);
       return;
     }
