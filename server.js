@@ -1,3 +1,18 @@
+const express = require('express');
+const fs = require('fs');
+const path = require('path');
+const app = express();
+const PORT = process.env.PORT || 10000;
+
+app.get('/', (req, res) => {
+  const htmlPath = path.join(process.cwd(), 'index.html');
+  if (fs.existsSync(htmlPath)) {
+    res.sendFile(htmlPath);
+  } else {
+    res.status(404).send("index.html file not found in root directory!");
+  }
+});
+
 app.get('/api/terminal', async (req, res) => {
   try {
     const map = [
@@ -11,33 +26,29 @@ app.get('/api/terminal', async (req, res) => {
       { name: "GBP/JPY", id: 72, yahoo: "GBPJPY=X" }
     ];
 
-    // 1. Price from Yahoo
     const prices = {};
     await Promise.all(map.map(async m => {
       try {
         const r = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${m.yahoo}`, { headers: { 'User-Agent': 'Mozilla/5.0' } });
         const j = await r.json();
         const meta = j.chart.result[0].meta;
-        prices[m.id] = { price: meta.regularMarketPrice.toFixed(5), color: meta.regularMarketPrice > meta.chartPreviousClose? 'green' : 'red' };
+        prices[m.id] = { price: meta.regularMarketPrice.toFixed(5), color: meta.regularMarketPrice > meta.chartPreviousClose ? 'green' : 'red' };
       } catch { prices[m.id] = { price: '0.0000', color: 'blue' }; }
     }));
 
-    // 2. 100% ORIGINAL Investing.com API
     const r = await fetch('https://api.investing.com/api/financialdata/technical/ByPairIDs?pairIDs=1,2,4,5,6,9,18,72&timeFrames=60,300,900,1800', {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         'Referer': 'https://www.investing.com/',
-        'Domain-Id': 'www',
-        'X-Requested-With': 'XMLHttpRequest'
+        'Domain-Id': 'www'
       }
     });
 
-    if (!r.ok) throw new Error('Investing API blocked: ' + r.status);
-    const apiData = await r.json(); // [{pairId:1, movingAverages:{'60':'Buy'...}}]
+    if (!r.ok) throw new Error('Investing blocked: ' + r.status);
+    const apiData = await r.json();
 
     const results = map.map(m => {
       const item = apiData.find(x => x.pairId == m.id);
-      if (!item) throw new Error('Pair not found ' + m.id);
       return {
         name: m.name,
         price: prices[m.id].price,
@@ -49,9 +60,11 @@ app.get('/api/terminal', async (req, res) => {
     });
 
     res.json({ success: true, data: results });
-
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ success: false, error: 'ORIGINAL FEED FAILED: ' + e.message + ' - Investing blocked Render IP' });
+    res.status(500).json({ success: false, error: e.message });
   }
+});
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
