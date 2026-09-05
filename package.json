@@ -1,16 +1,12 @@
 {
-  "name": "pro-trading-terminal",
+  "name": "investing-terminal",
   "version": "1.0.0",
-  "description": "Investing.com Technical Summary Terminal",
+  "description": "Real-time Investing Terminal",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "cheerio": "^1.1.2",
-    "express": "^5.1.0"
-  },
-  "engines": {
-    "node": ">=20"
+    "express": "^4.19.2"
   }
 }
