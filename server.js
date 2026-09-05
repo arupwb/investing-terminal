@@ -1,12 +1,9 @@
 const express = require('express');
-const fs = require('fs');
 const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-app.get('/', (req, res) => {
-  res.sendFile(path.join(process.cwd(), 'index.html'));
-});
+app.get('/', (req, res) => res.sendFile(path.join(process.cwd(), 'index.html')));
 
 app.get('/api/terminal', async (req, res) => {
   try {
@@ -23,24 +20,37 @@ app.get('/api/terminal', async (req, res) => {
 
     const investingUrl = 'https://api.investing.com/api/financialdata/technical/ByPairIDs?pairIDs=1,2,4,5,6,9,18,72&timeFrames=60,300,900,1800';
     let investingData = null;
+    let lastErr = '';
 
-    // Try Proxy 1
-    try {
-      const r1 = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(investingUrl)}`);
-      const j1 = await r1.json();
-      if (j1.contents && j1.contents.trim().startsWith('[')) {
-        investingData = JSON.parse(j1.contents);
-      } else {
-        throw new Error('Proxy 1 returned HTML');
-      }
-    } catch (e) {
-      console.log('Proxy1 failed, trying Proxy2', e.message);
-      // Try Proxy 2
-      const r2 = await fetch(`https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(investingUrl)}`);
-      investingData = await r2.json();
+    const proxies = [
+      investingUrl, // direct try
+      `https://api.allorigins.win/raw?url=${encodeURIComponent(investingUrl)}`,
+      `https://corsproxy.io/?${encodeURIComponent(investingUrl)}`,
+      `https://thingproxy.freeboard.name/fetch/${investingUrl}`
+    ];
+
+    for (let url of proxies) {
+      try {
+        const r = await fetch(url, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Referer': 'https://www.investing.com/',
+            'Origin': 'https://www.investing.com',
+            'X-Requested-With': 'XMLHttpRequest'
+          }
+        });
+        const text = await r.text();
+        if (text.trim().startsWith('[') || text.trim().startsWith('{')) {
+          const parsed = JSON.parse(text);
+          // allorigins raw returns array directly, get returns {contents}
+          investingData = Array.isArray(parsed)? parsed : JSON.parse(parsed.contents || '[]');
+          if (investingData.length > 0) break;
+        }
+      } catch (e) { lastErr = e.message; }
     }
 
-    // Price fetch
+    if (!investingData || investingData.length === 0) throw new Error('All proxies blocked: ' + lastErr);
+
     const prices = {};
     await Promise.all(map.map(async m => {
       try {
@@ -54,9 +64,7 @@ app.get('/api/terminal', async (req, res) => {
     const results = map.map(m => {
       const it = investingData.find(x => x.pairId == m.id);
       return {
-        name: m.name,
-        price: prices[m.id].p,
-        color: prices[m.id].c,
+        name: m.name, price: prices[m.id].p, color: prices[m.id].c,
         ma: [it.movingAverages['60'], it.movingAverages['300'], it.movingAverages['900'], it.movingAverages['1800']],
         ti: [it.technicalIndicators['60'], it.technicalIndicators['300'], it.technicalIndicators['900'], it.technicalIndicators['1800']],
         s: [it.summary['60'], it.summary['300'], it.summary['900'], it.summary['1800']]
@@ -65,9 +73,8 @@ app.get('/api/terminal', async (req, res) => {
 
     res.json({ success: true, data: results });
   } catch (e) {
-    console.log('API Error', e.message);
-    res.json({ success: false, error: 'Market feed busy, retrying... ' + e.message });
+    res.json({ success: false, error: e.message });
   }
 });
 
-app.listen(PORT, () => console.log('Running on ' + PORT));
+app.listen(PORT, () => console.log('Running'));
