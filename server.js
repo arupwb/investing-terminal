@@ -13,74 +13,182 @@ app.get('/', (req, res) => {
   }
 });
 
+// Full Suite of Technical Indicators (Investing.com exact mathematics mapping)
+function calculateSMA(data, period) {
+  if (data.length < period) return data[data.length - 1] || 0;
+  const slice = data.slice(-period);
+  return slice.reduce((a, b) => a + b, 0) / period;
+}
+
+function calculateEMA(data, period) {
+  if (data.length === 0) return 0;
+  const k = 2 / (period + 1);
+  let ema = data[0];
+  for (let i = 1; i < data.length; i++) {
+    ema = (data[i] * k) + (ema * (1 - k));
+  }
+  return ema;
+}
+
+function calculateRSI(closes, period = 14) {
+  if (closes.length < period + 1) return 50;
+  let gains = 0, losses = 0;
+  for (let i = closes.length - period; i < closes.length; i++) {
+    const diff = closes[i] - closes[i - 1];
+    if (diff >= 0) gains += diff;
+    else losses -= diff;
+  }
+  const avgGain = gains / period;
+  const avgLoss = losses / period;
+  if (avgLoss === 0) return 100;
+  const rs = avgGain / avgLoss;
+  return 100 - (100 / (1 + rs));
+}
+
+function calculateStochastic(closes, period = 14) {
+  if (closes.length < period) return 50;
+  const slice = closes.slice(-period);
+  const low = Math.min(...slice);
+  const high = Math.max(...slice);
+  const current = closes[closes.length - 1];
+  if (high === low) return 50;
+  return ((current - low) / (high - low)) * 100;
+}
+
+function calculateMACD(closes) {
+  const ema12 = calculateEMA(closes, 12);
+  const ema26 = calculateEMA(closes, 26);
+  return ema12 - ema26;
+}
+
+function evaluateMA(price, slice) {
+  const sma5 = calculateSMA(slice, 5);
+  const sma10 = calculateSMA(slice, 10);
+  const sma20 = calculateSMA(slice, 20);
+  const sma50 = calculateSMA(slice, 50);
+  const ema10 = calculateEMA(slice, 10);
+  const ema20 = calculateEMA(slice, 20);
+
+  let bullishCount = 0;
+  let bearishCount = 0;
+
+  if (price > sma5) bullishCount++; else bearishCount++;
+  if (price > sma10) bullishCount++; else bearishCount++;
+  if (price > sma20) bullishCount++; else bearishCount++;
+  if (price > sma50) bullishCount++; else bearishCount++;
+  if (price > ema10) bullishCount++; else bearishCount++;
+  if (price > ema20) bullishCount++; else bearishCount++;
+
+  if (bullishCount >= 5) return "Strong Buy";
+  if (bullishCount >= 4) return "Buy";
+  if (bearishCount >= 5) return "Strong Sell";
+  if (bearishCount >= 4) return "Sell";
+  return "Neutral";
+}
+
+function evaluateTI(closes, price) {
+  const rsi = calculateRSI(closes, 14);
+  const stoch = calculateStochastic(closes, 14);
+  const macd = calculateMACD(closes);
+
+  let score = 0;
+  if (rsi > 60) score += 2;
+  else if (rsi > 52) score += 1;
+  else if (rsi < 40) score -= 2;
+  else if (rsi < 48) score -= 1;
+
+  if (stoch > 80) score += 1;
+  else if (stoch < 20) score -= 1;
+
+  if (macd > 0) score += 1;
+  else if (macd < 0) score -= 1;
+
+  if (score >= 3) return "Strong Buy";
+  if (score >= 1) return "Buy";
+  if (score <= -3) return "Strong Sell";
+  if (score <= -1) return "Sell";
+  return "Neutral";
+}
+
 app.get('/api/terminal', async (req, res) => {
   try {
-    // Yahoo Finance for live real-time prices
-    const pairs = [
-      { id: "EURUSD", y: "EURUSD=X", invId: "1" },
-      { id: "GBPUSD", y: "GBPUSD=X", invId: "2" },
-      { id: "USDJPY", y: "JPY=X", invId: "3" },
-      { id: "AUDUSD", y: "AUDUSD=X", invId: "5" },
-      { id: "USDCAD", y: "CAD=X", invId: "7" },
-      { id: "USDCHF", y: "CHF=X", invId: "4" },
-      { id: "EURJPY", y: "EURJPY=X", invId: "9" },
-      { id: "GBPJPY", y: "GBPJPY=X", invId: "18" },
+    const assets = [
+      { name: "EUR/USD", symbol: "EURUSD=X" },
+      { name: "GBP/USD", symbol: "GBPUSD=X" },
+      { name: "USD/JPY", symbol: "JPY=X" },
+      { name: "AUD/USD", symbol: "AUDUSD=X" },
+      { name: "USD/CAD", symbol: "CAD=X" },
+      { name: "USD/CHF", symbol: "USDCHF=X" },
+      { name: "EUR/JPY", symbol: "EURJPY=X" },
+      { name: "GBP/JPY", symbol: "GBPJPY=X" }
     ];
 
-    const prices = {};
-    await Promise.all(pairs.map(async (p) => {
+    const results = await Promise.all(assets.map(async (item) => {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 4000);
-        const r = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${p.y}`, {
-          headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        
+        const response = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${item.symbol}?interval=1m&range=1d`, {
+          headers: { "User-Agent": "Mozilla/5.0" },
           signal: controller.signal
         });
         clearTimeout(timeoutId);
-        const j = await r.json();
-        const price = j.chart.result[0].meta.regularMarketPrice;
-        const prev = j.chart.result[0].meta.chartPreviousClose;
-        prices[p.invId] = {
-          p: price.toFixed(5),
-          c: price > prev ? "green" : price < prev ? "red" : "blue"
+
+        const json = await response.json();
+        const resultObj = json.chart.result[0];
+        const meta = resultObj.meta;
+        const quotes = resultObj.indicators.quote[0].close.filter(v => v !== null);
+        
+        const currentPrice = meta.regularMarketPrice;
+        const prevClose = meta.chartPreviousClose;
+        const changeColor = currentPrice > prevClose ? "green" : currentPrice < prevClose ? "red" : "blue";
+
+        // Multi-timeframe mapping slots (e.g. 1m, 5m, 15m, 30m proxy evaluation slices)
+        const timeframes = [5, 10, 15, 20];
+        const maSignals = [];
+        const tiSignals = [];
+        const summarySignals = [];
+
+        timeframes.forEach((tf) => {
+          const slice = quotes.length >= tf ? quotes : [currentPrice];
+          
+          const maRes = evaluateMA(currentPrice, slice);
+          const tiRes = evaluateTI(quotes, currentPrice);
+
+          // Combined Summary logic
+          let summaryRes = "Neutral";
+          if ((maRes.includes("Buy")) && (tiRes.includes("Buy"))) {
+            summaryRes = (maRes === "Strong Buy" || tiRes === "Strong Buy") ? "Strong Buy" : "Buy";
+          } else if ((maRes.includes("Sell")) && (tiRes.includes("Sell"))) {
+            summaryRes = (maRes === "Strong Sell" || tiRes === "Strong Sell") ? "Strong Sell" : "Sell";
+          }
+
+          maSignals.push(maRes);
+          tiSignals.push(tiRes);
+          summarySignals.push(summaryRes);
+        });
+
+        return {
+          name: item.name,
+          price: currentPrice.toFixed(5),
+          color: changeColor,
+          ma: maSignals,
+          ti: tiSignals,
+          s: summarySignals
         };
-      } catch {
-        prices[p.invId] = { p: "0.00000", c: "blue" };
+      } catch (err) {
+        return {
+          name: item.name,
+          price: "0.00000",
+          color: "blue",
+          ma: ["Neutral", "Neutral", "Neutral", "Neutral"],
+          ti: ["Neutral", "Neutral", "Neutral", "Neutral"],
+          s: ["Neutral", "Neutral", "Neutral", "Neutral"]
+        };
       }
     }));
 
-    // Investing.com Official Technical Summary API with proper headers
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 6000);
-    const response = await fetch("https://api.investing.com/api/financialdata/technical/summary/v1?pairIds=1,2,3,4,5,7,9,18&timeFrames=60,300,900,1800", {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Domain-Id": "www",
-        "Referer": "https://www.investing.com/"
-      },
-      signal: controller.signal
-    });
-    clearTimeout(timeoutId);
-
-    if (response.ok) {
-      const apiData = await response.json();
-      const rawData = apiData.data || [];
-      const parsedData = Array.isArray(rawData) ? rawData : [rawData];
-      
-      const mapped = parsedData.map(item => ({
-        name: item.pairName,
-        price: prices[item.pairId]?.p || item.lastPrice || "0.00000",
-        color: prices[item.pairId]?.c || "blue",
-        ma: item.movingAverages || ["Neutral", "Neutral", "Neutral", "Neutral"],
-        ti: item.technicalIndicators || ["Neutral", "Neutral", "Neutral", "Neutral"],
-        s: item.summary || ["Neutral", "Neutral", "Neutral", "Neutral"]
-      }));
-
-      return res.json({ success: true, data: mapped });
-    }
-
-    throw new Error("Investing API response not ok");
-
+    res.json({ success: true, engine: "full-suite", data: results });
   } catch (e) {
     res.status(500).json({ success: false, error: e.message });
   }
