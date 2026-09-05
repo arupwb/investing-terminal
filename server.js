@@ -1,11 +1,16 @@
 const express = require('express');
+const fs = require('fs');
 const path = require('path');
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 
-// সরাসরি রুট থেকে index.html সার্ভ করার জন্য
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
+  const htmlPath = path.join(process.cwd(), 'index.html');
+  if (fs.existsSync(htmlPath)) {
+    res.sendFile(htmlPath);
+  } else {
+    res.status(404).send("index.html file not found in root directory!");
+  }
 });
 
 app.get('/api/investing', async (req, res) => {
@@ -48,7 +53,9 @@ app.get('/api/investing', async (req, res) => {
 
     if (response.ok) {
       const apiData = await response.json();
-      const parsedData = apiData.data.map(item => ({
+      const parsedData = apiData.data.name ? [apiData.data] : apiData.data;
+      
+      const mapped = (Array.isArray(parsedData) ? parsedData : []).map(item => ({
         n: item.pairName,
         p: prices[item.pairId]?.p || item.lastPrice || "0.00000",
         c: prices[item.pairId]?.c || "blue",
@@ -56,7 +63,7 @@ app.get('/api/investing', async (req, res) => {
         ti: item.technicalIndicators || ["Neutral","Neutral","Neutral","Neutral"],
         s: item.summary || ["Neutral","Neutral","Neutral","Neutral"]
       }));
-      return res.json({ live: true, data: parsedData });
+      return res.json({ live: true, data: mapped });
     }
 
     throw new Error("Investing API blocked");
